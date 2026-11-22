@@ -65,8 +65,11 @@ bool AttitudeEkf::initializeFromAcceleration(
         return false;
     }
 
-    const float roll = atan2f(ayG, azG);
-    const float pitch = atan2f(-axG, sqrtf(ayG * ayG + azG * azG));
+    // This BMI270 is mounted so its +Z sensing axis points downward
+    // when the robot is level. Use a local world frame with +Z downward.
+    // At rest, specific force is therefore measured as approximately -1 g on Z.
+    const float roll = atan2f(-ayG, -azG);
+    const float pitch = atan2f(axG, sqrtf(ayG * ayG + azG * azG));
     const float cr = cosf(roll * 0.5F);
     const float sr = sinf(roll * 0.5F);
     const float cp = cosf(pitch * 0.5F);
@@ -196,13 +199,14 @@ bool AttitudeEkf::correctFromAcceleration(
         axG / magnitude, ayG / magnitude, azG / magnitude
     };
 
-    // Predicted upward specific-force direction in sensor coordinates:
-    // h = R(q)^T * [0, 0, 1].
+    // Predicted stationary specific-force direction in sensor coordinates.
+    // The local world frame uses +Z downward, so at rest:
+    // h = R(q)^T * [0, 0, -1].
     const float w = _q[0], x = _q[1], y = _q[2], z = _q[3];
     const float h[3] = {
-        2.0F * (x * z - w * y),
-        2.0F * (y * z + w * x),
-        1.0F - 2.0F * (x * x + y * y),
+        -2.0F * (x * z - w * y),
+        -2.0F * (y * z + w * x),
+        -1.0F + 2.0F * (x * x + y * y),
     };
     const float residual[3] = {
         measurement[0] - h[0],

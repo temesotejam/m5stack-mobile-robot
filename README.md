@@ -41,7 +41,7 @@ The EKF estimates a body-to-world quaternion and outputs roll, pitch, and yaw in
 
 - Gyroscope: quaternion prediction at the BMI270 sample rate (50 Hz)
 - Accelerometer: gravity-direction correction when acceleration magnitude is between 0.75 g and 1.25 g
-- Initialization: roll/pitch from acceleration, yaw set to zero
+- Initialization: roll/pitch from acceleration in a local +Z-down frame, yaw set to zero
 - Acceleration outliers: rejected by magnitude and innovation gates
 - Yaw: relative to startup and expected to drift because no magnetometer or other heading reference is used
 

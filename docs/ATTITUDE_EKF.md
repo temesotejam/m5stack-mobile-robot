@@ -23,11 +23,12 @@ The library configures both accelerometer and gyroscope at 50 Hz. The firmware u
 ## Initialization
 
 When the first accelerometer sample has a magnitude between 0.75 g and 1.25 g:
-- Roll is initialized from atan2(ay, az).
-- Pitch is initialized from atan2(-ax, sqrt(ay^2 + az^2)).
+- The local world frame is initialized with +Z downward, matching the observed BMI270 resting output of approximately -1 g on Z.
+- Roll is initialized from atan2(-ay, -az).
+- Pitch is initialized from atan2(ax, sqrt(ay^2 + az^2)).
 - Yaw is initialized to zero.
 
-This makes yaw relative to the orientation at startup.
+This makes yaw relative to the orientation at startup. With the module level, Roll and Pitch should be close to zero; small residual offsets can remain from sensor bias or mounting tilt.
 
 ## Prediction
 
@@ -37,7 +38,7 @@ The error-state covariance is propagated using the linearized attitude and gyro-
 
 ## Accelerometer correction
 
-The accelerometer vector is normalized and compared with the gravity direction predicted by the quaternion.
+The accelerometer vector is normalized and compared with the stationary specific-force direction predicted by the quaternion. The local world frame uses +Z downward, so the predicted stationary specific-force direction is R(q)^T * [0, 0, -1]. This matches the observed BMI270 sign when the module is level.
 
 Two simple rejection checks are used:
 1. Reject the sample if acceleration magnitude is outside 0.75 g to 1.25 g.

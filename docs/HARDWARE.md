@@ -68,7 +68,7 @@ The attitude EKF uses only the BMI270 accelerometer and gyroscope:
 - The EKF integrates gyro samples using measured elapsed time and corrects attitude from new accelerometer samples.
 - Accelerometer correction is skipped when the measured magnitude is outside 0.75 g to 1.25 g or when the direction innovation is too large.
 
-The EKF initializes roll and pitch from the first suitable acceleration sample. Yaw starts at zero. Since there is no heading reference in a 6-axis IMU, yaw is relative and drifts over time. Roll and pitch are gravity-referenced only when linear acceleration is small enough for the accelerometer to represent gravity.
+The EKF initializes roll and pitch from the first suitable acceleration sample. In the current M135 installation, the level-state BMI270 output is approximately -1 g on Z, so the EKF uses a local world frame with +Z downward. A level module should therefore report Roll and Pitch close to zero rather than a 180-degree roll. Yaw starts at zero. Since there is no heading reference in a 6-axis IMU, yaw is relative and drifts over time. Roll and pitch are gravity-referenced only when linear acceleration is small enough for the accelerometer to represent gravity.
 
 The output axes follow the physical BMI270 module axes. No installation-angle or axis-alignment calibration is applied.
 
