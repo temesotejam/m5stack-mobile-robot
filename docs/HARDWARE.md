@@ -5,7 +5,7 @@
 - M5Stack Basic
 - BASE AAA
 - Module13.2 GoPlus2
-- M5Stack GNSS Module
+- M5Stack GNSS Module (NEO-M9N)
 
 The firmware starts the sensors and communication interfaces, but does not move a servo or motor at startup.
 
@@ -27,18 +27,36 @@ The GoPlus2 and the GNSS module sensors share this bus.
 
 The firmware checks the known sensor addresses directly. It does not run a full I2C address scan.
 
-## GNSS UART
+## GNSS UART and NMEA reception
 
-UART2 is initialized at 38400 baud, 8-N-1:
+The M5Stack GNSS Module uses a u-blox NEO-M9N receiver. Its default UART setting is 38400 baud, 8-N-1.
+
+UART2 is initialized as follows:
 
 | Signal | Basic GPIO |
 |---|---:|
 | GNSS TX | 16 (ESP32 RX) |
 | GNSS RX | 17 (ESP32 TX) |
 
-Set the GNSS module UART DIP switches to route the NEO-M9N UART to these pins.
+The module's UART DIP-switch routing must connect the NEO-M9N UART to these host pins. The firmware increases the UART RX buffer to 1024 bytes and parses incoming NMEA characters with TinyGPSPlus.
 
-Position messages are not decoded in this firmware. Incoming UART bytes are read and discarded so the serial receive buffer does not fill. The UART remains initialized for later GNSS use.
+The firmware reports:
+- UART byte reception
+- Valid NMEA sentences and checksum failures
+- Fix/no-fix state
+- Satellites used in the navigation solution
+- HDOP
+- Latitude, longitude, altitude and speed when a fresh fix is available
+
+Display status meanings:
+- NO UART: no bytes received recently
+- RAW DATA: UART bytes arrive but no valid NMEA sentence has passed checksum recently
+- NMEA / NO FIX: valid NMEA sentences arrive but there is no fresh position fix
+- FIX: a fresh position and satellite-use report are available
+
+A valid NMEA stream does not necessarily mean that the receiver has a position fix. Indoor testing may show NMEA / NO FIX. For a position fix, place the supplied active antenna outdoors with a clear view of the sky.
+
+The GNSS parser is separate from the BMI270-only attitude EKF. GNSS position is not currently fused into the EKF.
 
 ## BMI270 attitude EKF
 
@@ -77,6 +95,7 @@ Open the USB serial console at 115200 baud:
 | s 0 90 | Set servo channel 0 to 90 degrees |
 | p 0 1500 | Set channel 0 pulse width to 1500 us |
 | status | Print sensor and connection status |
+| gnss | Print GNSS status and measurements |
 | att | Print EKF attitude |
 | ? | Show help |
 
@@ -94,5 +113,5 @@ Do not assume the AAA cells can supply the peak current required by a servo. Con
 2. Confirm GoPlus2, BMI270/BMM150, and BMP280 status on the display or serial console.
 3. Keep the robot still after startup until the EKF initializes from a valid acceleration sample.
 4. Check roll/pitch by slowly tilting the Basic; check yaw by rotating it around its vertical axis.
-5. Check that the GNSS UART RX counter changes when the module sends data. No GNSS fix is required.
+5. Place the GNSS active antenna outdoors and confirm UART, NMEA, satellite count, HDOP and FIX status.
 6. With the servo mechanism unloaded or safely disconnected, test one GoPlus2 channel at a time.

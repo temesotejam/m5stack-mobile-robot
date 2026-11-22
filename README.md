@@ -7,7 +7,7 @@ A compact M5Stack Basic firmware for the mobile robot hardware stack.
 - M5Stack Basic
 - BASE AAA
 - Module13.2 GoPlus2
-- M5Stack GNSS Module
+- M5Stack GNSS Module (NEO-M9N)
 
 ## Firmware functions
 
@@ -17,9 +17,23 @@ A compact M5Stack Basic firmware for the mobile robot hardware stack.
 - 6-axis attitude EKF using BMI270 acceleration and gyroscope only
 - BMM150 magnetometer hardware check (not used by the attitude EKF)
 - BMP280 temperature and pressure
-- GNSS module UART kept active at 38400 baud; incoming bytes are discarded without position parsing
+- GNSS NMEA parsing at 38400 baud: UART reception, valid sentence/checksum count, fix status, satellites used, HDOP, latitude, longitude, altitude and speed
 
 The BASE AAA is a power module and does not need firmware code.
+
+## GNSS status
+
+The GNSS UART is configured for 38400 baud, 8-N-1 on RX=GPIO16 and TX=GPIO17. The firmware parses incoming NMEA data with TinyGPSPlus.
+
+The display distinguishes:
+- NO UART: no recent serial bytes
+- RAW DATA: bytes arrive but no valid NMEA checksum has been received recently
+- NMEA / NO FIX: valid NMEA sentences arrive, but there is no fresh position fix
+- FIX: a fresh position and satellite-use report are available
+
+The display shows satellites used, HDOP, latitude and longitude. The USB serial console command gnss prints RX bytes, valid and failed checksums, satellite count, HDOP, position, altitude and speed.
+
+A GNSS fix is not expected indoors. For reception testing, place the supplied active antenna outdoors with a clear view of the sky. UART reception and valid NMEA sentences can be checked before a position fix is obtained.
 
 ## Attitude EKF
 
@@ -35,7 +49,8 @@ The EKF uses only the BMI270 accelerometer and gyroscope. It does not use the GN
 
 Serial commands:
 - att: print roll, pitch, yaw, and accelerometer correction status
-- status: print device and attitude status
+- gnss: print GNSS UART/NMEA/fix status and measurements
+- status: print device and sensor status
 
 See docs/ATTITUDE_EKF.md for the state model and limitations.
 
@@ -52,6 +67,7 @@ The serial console runs at 115200 baud and accepts:
     s 0 90       Set channel 0 to 90 degrees
     p 0 1500     Set channel 0 pulse width to 1500 us
     status       Print sensor and connection status
+    gnss         Print GNSS status and measurements
     att          Print EKF attitude
     ?            Show command help
 

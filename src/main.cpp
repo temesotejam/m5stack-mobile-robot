@@ -2,6 +2,7 @@
 #include <M5Unified.h>
 #include <Wire.h>
 #include <M5Module_GNSS.h>
+#include <TinyGPS++.h>
 #include <Adafruit_BMP280.h>
 #include <stdio.h>
 #include <string.h>
@@ -28,6 +29,7 @@ constexpr uint32_t kStatusPeriodMs = 1000;     // 1 Hz
 constexpr uint32_t kGoPlusRetryMs = 2000;
 
 HardwareSerial GnssSerial(2);
+TinyGPSPlus gnss;
 BMI270::BMI270 imu;
 Adafruit_BMP280 barometer(&Wire);
 GoPlus2Driver goPlus2(Wire);
@@ -60,6 +62,8 @@ uint8_t selectedServoChannel = 0;
 uint8_t servoAngle = 90;
 
 uint32_t gnssRxBytes = 0;
+uint32_t lastGnssByteMs = 0;
+uint32_t lastGnssValidNmeaMs = 0;
 uint32_t lastSensorMs = 0;
 uint32_t lastBarometerMs = 0;
 uint32_t lastDisplayMs = 0;
@@ -126,19 +130,54 @@ void initializeI2cDevices() {
 }
 
 void initializeGnssUart() {
+    GnssSerial.setRxBufferSize(1024);
     GnssSerial.begin(
         kGnssBaudRate, SERIAL_8N1, kGnssRxPin, kGnssTxPin);
-    Serial.printf("[GNSS] UART2 active: %lu baud, RX=%d, TX=%d\n",
+    Serial.printf("[GNSS] UART2 active: %lu baud, RX=%d, TX=%d, NMEA parser ready\n",
                   static_cast<unsigned long>(kGnssBaudRate),
                   kGnssRxPin,
                   kGnssTxPin);
 }
 
+bool gnssUartRecent() {
+    return gnssRxBytes > 0 && (millis() - lastGnssByteMs) < 3000;
+}
+
+bool gnssNmeaRecent() {
+    return gnss.passedChecksum() > 0 &&
+           (millis() - lastGnssValidNmeaMs) < 3000;
+}
+
+bool gnssHasFreshFix() {
+    return gnssNmeaRecent() &&
+           gnss.location.isValid() &&
+           gnss.location.age() < 3000 &&
+           gnss.satellites.isValid() &&
+           gnss.satellites.age() < 3000 &&
+           gnss.satellites.value() > 0;
+}
+
+const char* gnssStatusText() {
+    if (!gnssUartRecent()) {
+        return "NO UART";
+    }
+    if (!gnssNmeaRecent()) {
+        return "RAW DATA";
+    }
+    return gnssHasFreshFix() ? "FIX" : "NMEA / NO FIX";
+}
+
 void pollGnssUart() {
-    // Keep the UART link active without decoding GNSS position messages.
     while (GnssSerial.available() > 0) {
-        (void)GnssSerial.read();
+        const char c = static_cast<char>(GnssSerial.read());
         ++gnssRxBytes;
+        lastGnssByteMs = millis();
+
+        // TinyGPSPlus returns true when a complete NMEA sentence has a
+        // valid checksum. Unknown NMEA sentence types are still recognized.
+        if (gnss.encode(c)) {
+            lastGnssValidNmeaMs = millis();
+        }
     }
 }
 
@@ -242,6 +281,39 @@ bool commandServoPulse(uint8_t channel, uint16_t pulseWidthUs) {
     return true;
 }
 
+void reportGnss() {
+    Serial.printf("[GNSS] status=%s RX=%lu bytes NMEA_OK=%lu checksum_error=%lu\n",
+                  gnssStatusText(),
+                  static_cast<unsigned long>(gnssRxBytes),
+                  static_cast<unsigned long>(gnss.passedChecksum()),
+                  static_cast<unsigned long>(gnss.failedChecksum()));
+
+    if (gnss.satellites.isValid() && gnss.satellites.age() < 3000) {
+        Serial.printf("[GNSS] satellites_used=%lu",
+                      static_cast<unsigned long>(gnss.satellites.value()));
+        if (gnss.hdop.isValid() && gnss.hdop.age() < 3000) {
+            Serial.printf(" HDOP=%.2f", gnss.hdop.hdop());
+        }
+        Serial.println();
+    } else {
+        Serial.println("[GNSS] satellite data waiting");
+    }
+
+    if (gnssHasFreshFix()) {
+        Serial.printf("[GNSS FIX] lat=%.7f lon=%.7f",
+                      gnss.location.lat(), gnss.location.lng());
+        if (gnss.altitude.isValid() && gnss.altitude.age() < 3000) {
+            Serial.printf(" altitude=%.1fm", gnss.altitude.meters());
+        }
+        if (gnss.speed.isValid() && gnss.speed.age() < 3000) {
+            Serial.printf(" speed=%.2fkm/h", gnss.speed.kmph());
+        }
+        Serial.println();
+    } else {
+        Serial.println("[GNSS] waiting for a fresh position fix");
+    }
+}
+
 void reportAttitude() {
     if (!attitudeEkf.isInitialized()) {
         Serial.println("[ATTITUDE] EKF waiting for a valid 1g accelerometer sample");
@@ -264,6 +336,7 @@ void printHelp() {
     Serial.println("  s <channel 0-3> <angle 0-180>");
     Serial.println("  p <channel 0-3> <pulse_us 500-2500>");
     Serial.println("  status");
+    Serial.println("  gnss");
     Serial.println("  att");
     Serial.println("  ?");
     Serial.println();
@@ -277,6 +350,8 @@ void reportStatus() {
                   magnetometerReady ? "OK" : "NO",
                   barometerReady ? "OK" : "NO",
                   static_cast<unsigned long>(gnssRxBytes));
+
+    reportGnss();
 
     if (imuReady) {
         Serial.printf("[ACC g] %.3f %.3f %.3f  [GYRO dps] %.2f %.2f %.2f\n",
@@ -307,6 +382,11 @@ void processSerialLine(char* line) {
 
     if (strcmp(line, "status") == 0) {
         reportStatus();
+        return;
+    }
+
+    if (strcmp(line, "gnss") == 0) {
+        reportGnss();
         return;
     }
 
@@ -420,16 +500,45 @@ void drawStaticDisplay() {
 void renderDisplay() {
     char row[64];
 
-    snprintf(row, sizeof(row), "GoPlus2:%s  BMI270:%s  MAG:%s",
+    snprintf(row, sizeof(row), "GoPlus2:%s BMI270:%s BMP280:%s BMM:%s",
              goPlus2Ready ? "OK" : "--",
              imuReady ? "OK" : "--",
+             barometerReady ? "OK" : "--",
              magnetometerReady ? "OK" : "--");
     drawDisplayRow(20, TFT_WHITE, row);
 
-    snprintf(row, sizeof(row), "BMP280:%s  GNSS UART:ON  RX:%lu",
-             barometerReady ? "OK" : "--",
+    snprintf(row, sizeof(row), "GNSS:%s RX:%lu",
+             gnssStatusText(),
              static_cast<unsigned long>(gnssRxBytes));
     drawDisplayRow(35, TFT_WHITE, row);
+
+    if (gnss.satellites.isValid() && gnss.satellites.age() < 3000) {
+        if (gnss.hdop.isValid() && gnss.hdop.age() < 3000) {
+            snprintf(row, sizeof(row), "SAT used:%lu  HDOP:%.2f",
+                     static_cast<unsigned long>(gnss.satellites.value()),
+                     gnss.hdop.hdop());
+        } else {
+            snprintf(row, sizeof(row), "SAT used:%lu  HDOP:--",
+                     static_cast<unsigned long>(gnss.satellites.value()));
+        }
+    } else {
+        snprintf(row, sizeof(row), "SAT used:--  HDOP:--");
+    }
+    drawDisplayRow(50, TFT_WHITE, row);
+
+    if (gnssHasFreshFix()) {
+        snprintf(row, sizeof(row), "LAT: %.6f", gnss.location.lat());
+    } else {
+        snprintf(row, sizeof(row), "LAT: waiting for fix");
+    }
+    drawDisplayRow(65, TFT_WHITE, row);
+
+    if (gnssHasFreshFix()) {
+        snprintf(row, sizeof(row), "LON: %.6f", gnss.location.lng());
+    } else {
+        snprintf(row, sizeof(row), "LON: waiting for fix");
+    }
+    drawDisplayRow(80, TFT_WHITE, row);
 
     if (imuReady) {
         snprintf(row, sizeof(row), "ACC[g] %.2f %.2f %.2f",
@@ -437,7 +546,7 @@ void renderDisplay() {
     } else {
         snprintf(row, sizeof(row), "ACC: not available");
     }
-    drawDisplayRow(50, TFT_WHITE, row);
+    drawDisplayRow(95, TFT_WHITE, row);
 
     if (imuReady) {
         snprintf(row, sizeof(row), "GYR[dps] %.1f %.1f %.1f",
@@ -445,22 +554,7 @@ void renderDisplay() {
     } else {
         snprintf(row, sizeof(row), "GYR: not available");
     }
-    drawDisplayRow(65, TFT_WHITE, row);
-
-    if (magnetometerReady && magneticFieldValid) {
-        snprintf(row, sizeof(row), "MAG[uT] %d %d %d", magX, magY, magZ);
-    } else {
-        snprintf(row, sizeof(row), "MAG: not available");
-    }
-    drawDisplayRow(80, TFT_WHITE, row);
-
-    if (barometerReady) {
-        snprintf(row, sizeof(row), "TEMP: %.1f C  PRESS: %.1f hPa",
-                 temperatureC, pressureHpa);
-    } else {
-        snprintf(row, sizeof(row), "BARO: not available");
-    }
-    drawDisplayRow(95, TFT_WHITE, row);
+    drawDisplayRow(110, TFT_WHITE, row);
 
     if (attitudeEkf.isInitialized()) {
         float roll = 0.0F, pitch = 0.0F, yaw = 0.0F;
@@ -469,7 +563,7 @@ void renderDisplay() {
     } else {
         snprintf(row, sizeof(row), "EKF: waiting for stable acceleration");
     }
-    drawDisplayRow(110, TFT_WHITE, row);
+    drawDisplayRow(125, TFT_WHITE, row);
 
     if (attitudeEkf.isInitialized()) {
         float roll = 0.0F, pitch = 0.0F, yaw = 0.0F;
@@ -477,16 +571,6 @@ void renderDisplay() {
         snprintf(row, sizeof(row), "EKF Y:%6.1f deg (relative)", yaw);
     } else {
         snprintf(row, sizeof(row), "EKF Y: --");
-    }
-    drawDisplayRow(125, TFT_WHITE, row);
-
-    if (attitudeEkf.isInitialized()) {
-        snprintf(row, sizeof(row), "ACC correction: %s",
-                 attitudeEkf.lastAccelCorrectionAccepted()
-                     ? "accepted"
-                     : "rejected");
-    } else {
-        snprintf(row, sizeof(row), "ACC correction: waiting");
     }
     drawDisplayRow(140, TFT_WHITE, row);
 
