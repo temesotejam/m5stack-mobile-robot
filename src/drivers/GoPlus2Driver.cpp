@@ -3,6 +3,8 @@
 namespace {
 constexpr uint8_t kServoAngleRegister = 0x00;
 constexpr uint8_t kServoPulseWidthRegister = 0x10;
+constexpr uint16_t kMinServoPulseWidthUs = 500;
+constexpr uint16_t kMaxServoPulseWidthUs = 2500;
 }  // namespace
 
 GoPlus2Driver::GoPlus2Driver(TwoWire& wire) : _wire(wire) {}
@@ -24,7 +26,9 @@ bool GoPlus2Driver::setServoAngle(uint8_t channel, uint8_t angle) {
 }
 
 bool GoPlus2Driver::setServoPulseWidth(uint8_t channel, uint16_t pulseWidthUs) {
-    if (!_ready || channel >= kServoChannels) {
+    if (!_ready || channel >= kServoChannels ||
+        pulseWidthUs < kMinServoPulseWidthUs ||
+        pulseWidthUs > kMaxServoPulseWidthUs) {
         return false;
     }
 
