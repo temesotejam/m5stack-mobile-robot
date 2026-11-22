@@ -49,13 +49,11 @@ The Basic buttons provide a small manual control:
 
 The serial console runs at 115200 baud and accepts:
 
-\`\`\`text
-s 0 90       Set channel 0 to 90 degrees
-p 0 1500     Set channel 0 pulse width to 1500 us
-status       Print sensor and connection status
-att          Print EKF attitude
-?            Show command help
-\`\`\`
+    s 0 90       Set channel 0 to 90 degrees
+    p 0 1500     Set channel 0 pulse width to 1500 us
+    status       Print sensor and connection status
+    att          Print EKF attitude
+    ?            Show command help
 
 Angle commands accept 0..180 degrees. Pulse-width commands accept 500..2500 us. No servo or motor command is sent automatically at startup. GoPlus2 DC motor control is not included in this firmware.
 
@@ -69,9 +67,7 @@ Use desktop Chrome or Edge over HTTPS, connect the M5Stack Basic by USB, and sel
 
 ## Build locally
 
-\`\`\`sh
-pio run -e m5stack-basic
-\`\`\`
+    pio run -e m5stack-basic
 
 ## Hardware details
 

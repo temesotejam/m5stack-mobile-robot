@@ -52,7 +52,7 @@ void AttitudeEkf::reset() {
     for (int i = 0; i < 3; ++i) {
         _gyroBias[i] = 0.0F;
     }
-    memset(_P, 0, sizeof(_P));
+    memset(_covariance, 0, sizeof(_covariance));
     _initialized = false;
     _lastAccelCorrectionAccepted = false;
 }
@@ -80,7 +80,7 @@ bool AttitudeEkf::initializeFromAcceleration(
     normalizeQuaternion();
 
     for (int i = 0; i < 6; ++i) {
-        _P[i][i] = (i < 3) ? 0.05F : 0.01F;
+        _covariance[i][i] = (i < 3) ? 0.05F : 0.01F;
     }
 
     _initialized = true;
@@ -151,7 +151,7 @@ void AttitudeEkf::predict(
     for (int i = 0; i < 6; ++i) {
         for (int j = 0; j < 6; ++j) {
             for (int k = 0; k < 6; ++k) {
-                temp[i][j] += F[i][k] * _P[k][j];
+                temp[i][j] += F[i][k] * _covariance[k][j];
             }
         }
     }
@@ -174,7 +174,7 @@ void AttitudeEkf::predict(
 
     for (int i = 0; i < 6; ++i) {
         for (int j = 0; j < 6; ++j) {
-            _P[i][j] = 0.5F * (propagated[i][j] + propagated[j][i]);
+            _covariance[i][j] = 0.5F * (propagated[i][j] + propagated[j][i]);
         }
     }
 }
@@ -227,7 +227,7 @@ bool AttitudeEkf::correctFromAcceleration(
         for (int j = 0; j < 3; ++j) {
             for (int a = 0; a < 6; ++a) {
                 for (int b = 0; b < 6; ++b) {
-                    S[i][j] += H[i][a] * _P[a][b] * H[j][b];
+                    S[i][j] += H[i][a] * _covariance[a][b] * H[j][b];
                 }
             }
         }
@@ -254,7 +254,7 @@ bool AttitudeEkf::correctFromAcceleration(
     for (int i = 0; i < 6; ++i) {
         for (int j = 0; j < 3; ++j) {
             for (int k = 0; k < 6; ++k) {
-                PHt[i][j] += _P[i][k] * H[j][k];
+                PHt[i][j] += _covariance[i][k] * H[j][k];
             }
         }
     }
@@ -322,7 +322,7 @@ bool AttitudeEkf::correctFromAcceleration(
     for (int i = 0; i < 6; ++i) {
         for (int j = 0; j < 6; ++j) {
             for (int k = 0; k < 6; ++k) {
-                AP[i][j] += A[i][k] * _P[k][j];
+                AP[i][j] += A[i][k] * _covariance[k][j];
             }
         }
     }
@@ -339,7 +339,7 @@ bool AttitudeEkf::correctFromAcceleration(
     }
     for (int i = 0; i < 6; ++i) {
         for (int j = 0; j < 6; ++j) {
-            _P[i][j] = 0.5F * (updated[i][j] + updated[j][i]);
+            _covariance[i][j] = 0.5F * (updated[i][j] + updated[j][i]);
         }
     }
 

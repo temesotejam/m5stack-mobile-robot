@@ -26,7 +26,7 @@ private:
     // Gyroscope bias estimate in rad/s, sensor coordinates.
     float _gyroBias[3];
     // Error-state covariance: [attitude error(3), gyro-bias error(3)].
-    float _P[6][6];
+    float _covariance[6][6];
     bool _initialized;
     bool _lastAccelCorrectionAccepted;
 };
