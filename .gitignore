@@ -1,0 +1,14 @@
+# PlatformIO
+.pio/
+.piolibdeps/
+
+# Build output
+site/
+*.bin
+*.elf
+*.map
+
+# Editors
+.vscode/
+.idea/
+.DS_Store
