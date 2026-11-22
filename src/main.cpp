@@ -143,7 +143,7 @@ void pollImu() {
 
     if (imu.magneticFieldAvailable() > 0) {
         magneticFieldValid =
-            (imu.readMagneticField(magX, magY, magZ) == 0);
+            (imu.readMagneticField(magX, magY, magZ) != 0);
     }
 }
 
