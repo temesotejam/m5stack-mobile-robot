@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101820">
+  <title>M5Stack Mobile Robot — Web Flasher</title>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, "Segoe UI", "Noto Sans JP", sans-serif;
+      background: #101820;
+      color: #eef3f6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 82% 8%, rgba(31, 151, 139, .18), transparent 32rem),
+        linear-gradient(145deg, #101820, #17242e 65%, #101820);
+    }
+    .wrap { width: min(900px, calc(100% - 32px)); margin: 0 auto; padding: 52px 0 36px; }
+    header { display: flex; align-items: center; gap: 12px; margin-bottom: 36px; }
+    .mark {
+      display: grid; place-items: center; width: 42px; height: 42px;
+      border-radius: 12px; background: #1f978b; color: #081a1a;
+      font-weight: 900; letter-spacing: -1px;
+    }
+    .brand { font-size: 13px; color: #a9bac4; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(30px, 6vw, 48px); letter-spacing: -.04em; }
+    .lead { max-width: 650px; color: #b7c5cc; line-height: 1.8; margin: 14px 0 0; }
+    .panel {
+      margin-top: 30px; padding: clamp(22px, 5vw, 36px);
+      border: 1px solid #344651; border-radius: 22px;
+      background: rgba(24, 39, 49, .88);
+      box-shadow: 0 24px 70px rgba(0,0,0,.24);
+    }
+    .eyebrow { color: #65d6c7; font-size: 11px; font-weight: 800; letter-spacing: .16em; }
+    h2 { margin: 10px 0 8px; font-size: 22px; }
+    .muted { color: #a9bac4; line-height: 1.7; }
+    esp-web-install-button {
+      display: block; margin: 24px 0 10px;
+      --esp-tools-button-color: #65d6c7;
+      --esp-tools-button-text-color: #09201f;
+      --esp-tools-button-border-radius: 12px;
+    }
+    esp-web-install-button button {
+      min-height: 52px; padding: 0 24px; border: 0; border-radius: 12px;
+      background: #65d6c7; color: #09201f; font-size: 15px;
+      font-weight: 800; cursor: pointer;
+    }
+    .notice {
+      margin-top: 26px; padding: 16px 18px; border-radius: 14px;
+      background: #202f39; color: #b7c5cc; line-height: 1.7; font-size: 13px;
+    }
+    .notice strong { color: #eef3f6; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 18px; }
+    .item { padding: 16px; border: 1px solid #344651; border-radius: 14px; background: rgba(16,24,32,.45); }
+    .item b { display: block; margin-bottom: 6px; font-size: 13px; }
+    .item span { color: #a9bac4; font-size: 12px; line-height: 1.6; }
+    footer { margin-top: 26px; color: #8497a2; font-size: 12px; }
+    a { color: #65d6c7; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    @media (max-width: 620px) {
+      .wrap { padding-top: 30px; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <div class="mark">MR</div>
+      <div>
+        <div class="brand">Firmware tools</div>
+        <div>M5Stack Mobile Robot</div>
+      </div>
+    </header>
+
+    <h1>Web Flasher</h1>
+    <p class="lead">
+      M5Stack Basic 用ファームウェアを書き込みます。
+      USB ケーブルで接続し、下のボタンからシリアルポートを選択してください。
+    </p>
+
+    <section class="panel">
+      <div class="eyebrow">INSTALL / UPDATE</div>
+      <h2>Install firmware</h2>
+      <p class="muted">
+        対象ボード: M5Stack Basic (ESP32 / 16 MB Flash)<br>
+        ファームウェアは GitHub Actions でビルドされた最新の安定版です。
+      </p>
+
+      <esp-web-install-button manifest="./firmware/manifest.json">
+        <button slot="activate">Connect &amp; Install</button>
+        <span slot="unsupported">
+          このブラウザは Web Serial に対応していません。デスクトップ版 Chrome または Edge を使用してください。
+        </span>
+        <span slot="not-allowed">
+          HTTPS 接続が必要です。GitHub Pages の URL から開いてください。
+        </span>
+      </esp-web-install-button>
+
+      <div class="muted" id="version">Firmware version: loading...</div>
+
+      <div class="notice">
+        <strong>書き込み前に確認してください</strong><br>
+        ・USB データ通信対応ケーブルを使用してください。<br>
+        ・シリアルモニタなど、同じ COM ポートを使用するアプリを閉じてください。<br>
+        ・初回インストール時は既存データの消去を選択できます。<br>
+        ・書き込み中は USB ケーブルを抜かないでください。
+      </div>
+    </section>
+
+    <div class="grid">
+      <div class="item">
+        <b>1. Connect</b>
+        <span>USB 接続後、表示された M5Stack のシリアルポートを選択します。</span>
+      </div>
+      <div class="item">
+        <b>2. Install</b>
+        <span>Install を開始し、書き込みと検証が終わるまで待ちます。</span>
+      </div>
+      <div class="item">
+        <b>3. Reboot</b>
+        <span>完了後にボードを再起動し、画面とセンサ状態を確認します。</span>
+      </div>
+    </div>
+
+    <footer>
+      <a href="https://github.com/temesotejam/m5stack-mobile-robot">Source repository</a>
+      ·
+      <a href="https://docs.m5stack.com/ja/core/Basic">M5Stack Basic docs</a>
+    </footer>
+  </main>
+
+  <script>
+    fetch("./firmware/manifest.json", { cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) throw new Error("manifest unavailable");
+        return response.json();
+      })
+      .then((manifest) => {
+        document.getElementById("version").textContent =
+          "Firmware version: " + manifest.version;
+      })
+      .catch(() => {
+        document.getElementById("version").textContent =
+          "Firmware version: not published yet";
+      });
+  </script>
+</body>
+</html>
