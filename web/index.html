@@ -112,6 +112,13 @@
         ・初回インストール時は既存データの消去を選択できます。<br>
         ・書き込み中は USB ケーブルを抜かないでください。
       </div>
+
+      <div class="notice">
+        <strong>ファームウェアの操作</strong><br>
+        Basic の A ボタンでサーボチャンネルを選択、B で角度を -5 度、C で +5 度変更します。<br>
+        USB シリアルモニタ（115200 bps）から <code>s 0 90</code>（角度指定）、<code>p 0 1500</code>（パルス幅指定）、<code>status</code>（状態表示）も使用できます。<br>
+        GNSS の位置解析は行いませんが、UART 通信は有効です。
+      </div>
     </section>
 
     <div class="grid">
