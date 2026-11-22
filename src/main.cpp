@@ -390,67 +390,109 @@ void pollButtons() {
     }
 }
 
-void renderDisplay() {
+void drawDisplayRow(int y, uint16_t color, const char* text) {
+    // Paint a fixed-width text row with its background color. This overwrites
+    // old characters without clearing the whole LCD.
+    char line[53];
+    snprintf(line, sizeof(line), "%s", text);
+
+    size_t length = strlen(line);
+    while (length < 52) {
+        line[length++] = ' ';
+    }
+    line[52] = '\0';
+
+    M5.Display.setTextColor(color, TFT_BLACK);
+    M5.Display.setCursor(6, y);
+    M5.Display.print(line);
+}
+
+void drawStaticDisplay() {
     M5.Display.fillScreen(TFT_BLACK);
     M5.Display.setTextSize(1);
-    M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
-    M5.Display.setCursor(6, 5);
+    drawDisplayRow(5, TFT_WHITE, "M5STACK MOBILE ROBOT");
+    M5.Display.drawFastHLine(6, 158, 308, TFT_DARKGREY);
+    drawDisplayRow(180, TFT_WHITE, "A: next CH   B: -5 deg   C: +5 deg");
+    drawDisplayRow(195, TFT_WHITE, "Serial: s <ch> <deg> / p <ch> <us>");
+    drawDisplayRow(210, TFT_YELLOW, "Servo moves only after a command.");
+}
 
-    M5.Display.println("M5STACK MOBILE ROBOT");
-    M5.Display.printf("GoPlus2:%s  BMI270:%s  MAG:%s\n",
-                      goPlus2Ready ? "OK" : "--",
-                      imuReady ? "OK" : "--",
-                      magnetometerReady ? "OK" : "--");
-    M5.Display.printf("BMP280:%s  GNSS UART:ON  RX:%lu\n",
-                      barometerReady ? "OK" : "--",
-                      static_cast<unsigned long>(gnssRxBytes));
+void renderDisplay() {
+    char row[64];
+
+    snprintf(row, sizeof(row), "GoPlus2:%s  BMI270:%s  MAG:%s",
+             goPlus2Ready ? "OK" : "--",
+             imuReady ? "OK" : "--",
+             magnetometerReady ? "OK" : "--");
+    drawDisplayRow(20, TFT_WHITE, row);
+
+    snprintf(row, sizeof(row), "BMP280:%s  GNSS UART:ON  RX:%lu",
+             barometerReady ? "OK" : "--",
+             static_cast<unsigned long>(gnssRxBytes));
+    drawDisplayRow(35, TFT_WHITE, row);
 
     if (imuReady) {
-        M5.Display.printf("ACC[g] %.2f %.2f %.2f\n",
-                          accelX, accelY, accelZ);
-        M5.Display.printf("GYR[dps] %.1f %.1f %.1f\n",
-                          gyroX, gyroY, gyroZ);
+        snprintf(row, sizeof(row), "ACC[g] %.2f %.2f %.2f",
+                 accelX, accelY, accelZ);
     } else {
-        M5.Display.println("IMU: not available");
-        M5.Display.println();
+        snprintf(row, sizeof(row), "ACC: not available");
     }
+    drawDisplayRow(50, TFT_WHITE, row);
+
+    if (imuReady) {
+        snprintf(row, sizeof(row), "GYR[dps] %.1f %.1f %.1f",
+                 gyroX, gyroY, gyroZ);
+    } else {
+        snprintf(row, sizeof(row), "GYR: not available");
+    }
+    drawDisplayRow(65, TFT_WHITE, row);
 
     if (magnetometerReady && magneticFieldValid) {
-        M5.Display.printf("MAG[uT] %d %d %d\n", magX, magY, magZ);
+        snprintf(row, sizeof(row), "MAG[uT] %d %d %d", magX, magY, magZ);
     } else {
-        M5.Display.println("MAG: not available");
+        snprintf(row, sizeof(row), "MAG: not available");
     }
+    drawDisplayRow(80, TFT_WHITE, row);
 
     if (barometerReady) {
-        M5.Display.printf("TEMP: %.1f C  PRESS: %.1f hPa\n",
-                          temperatureC, pressureHpa);
+        snprintf(row, sizeof(row), "TEMP: %.1f C  PRESS: %.1f hPa",
+                 temperatureC, pressureHpa);
     } else {
-        M5.Display.println("BARO: not available");
+        snprintf(row, sizeof(row), "BARO: not available");
     }
+    drawDisplayRow(95, TFT_WHITE, row);
 
     if (attitudeEkf.isInitialized()) {
         float roll = 0.0F, pitch = 0.0F, yaw = 0.0F;
         attitudeEkf.getEulerDegrees(roll, pitch, yaw);
-        M5.Display.printf("EKF R:%6.1f P:%6.1f deg\n", roll, pitch);
-        M5.Display.printf("EKF Y:%6.1f deg (relative)\n", yaw);
-        M5.Display.printf("ACC correction: %s\n",
-                          attitudeEkf.lastAccelCorrectionAccepted()
-                              ? "accepted"
-                              : "rejected");
+        snprintf(row, sizeof(row), "EKF R:%6.1f P:%6.1f deg", roll, pitch);
     } else {
-        M5.Display.println("EKF: waiting for stable acceleration");
-        M5.Display.println("EKF: --");
-        M5.Display.println();
+        snprintf(row, sizeof(row), "EKF: waiting for stable acceleration");
     }
+    drawDisplayRow(110, TFT_WHITE, row);
 
-    M5.Display.drawFastHLine(6, 151, 308, TFT_DARKGREY);
-    M5.Display.setCursor(6, 158);
-    M5.Display.printf("SERVO CH:%u  ANGLE:%u deg\n",
-                      selectedServoChannel, servoAngle);
-    M5.Display.println("A: next CH   B: -5 deg   C: +5 deg");
-    M5.Display.println("Serial: s <ch> <deg> / p <ch> <us>");
-    M5.Display.setTextColor(TFT_YELLOW, TFT_BLACK);
-    M5.Display.println("Servo moves only after a command.");
+    if (attitudeEkf.isInitialized()) {
+        float roll = 0.0F, pitch = 0.0F, yaw = 0.0F;
+        attitudeEkf.getEulerDegrees(roll, pitch, yaw);
+        snprintf(row, sizeof(row), "EKF Y:%6.1f deg (relative)", yaw);
+    } else {
+        snprintf(row, sizeof(row), "EKF Y: --");
+    }
+    drawDisplayRow(125, TFT_WHITE, row);
+
+    if (attitudeEkf.isInitialized()) {
+        snprintf(row, sizeof(row), "ACC correction: %s",
+                 attitudeEkf.lastAccelCorrectionAccepted()
+                     ? "accepted"
+                     : "rejected");
+    } else {
+        snprintf(row, sizeof(row), "ACC correction: waiting");
+    }
+    drawDisplayRow(140, TFT_WHITE, row);
+
+    snprintf(row, sizeof(row), "SERVO CH:%u  ANGLE:%u deg",
+             selectedServoChannel, servoAngle);
+    drawDisplayRow(165, TFT_WHITE, row);
 }
 
 }  // namespace
@@ -465,12 +507,9 @@ void setup() {
     Serial.begin(115200);
 
     M5.Display.setRotation(1);
-    M5.Display.setTextSize(1);
-    M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
-    M5.Display.fillScreen(TFT_BLACK);
-    M5.Display.setCursor(8, 8);
-    M5.Display.println("M5Stack Mobile Robot");
-    M5.Display.println("Initializing...");
+    drawStaticDisplay();
+    renderDisplay();
+    lastDisplayMs = millis();
 
     Serial.println();
     Serial.println("M5Stack Mobile Robot");
