@@ -366,6 +366,7 @@ void renderDisplay() {
     }
 
     M5.Display.drawFastHLine(6, 151, 308, TFT_DARKGREY);
+    M5.Display.setCursor(6, 158);
     M5.Display.printf("SERVO CH:%u  ANGLE:%u deg\n",
                       selectedServoChannel, servoAngle);
     M5.Display.println("A: next CH   B: -5 deg   C: +5 deg");
@@ -377,7 +378,12 @@ void renderDisplay() {
 }  // namespace
 
 void setup() {
-    M5.begin();
+    auto config = M5.config();
+    config.internal_imu = false;
+    config.internal_rtc = false;
+    config.internal_mic = false;
+    config.internal_spk = false;
+    M5.begin(config);
     Serial.begin(115200);
 
     M5.Display.setRotation(1);
