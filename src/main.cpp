@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "drivers/GoPlus2Driver.h"
+#include "estimation/AttitudeEkf.h"
 
 namespace {
 
@@ -20,7 +21,7 @@ constexpr uint32_t kGnssBaudRate = 38400;
 constexpr uint8_t kBmi270Addresses[] = {0x69, 0x68};
 constexpr uint8_t kBmp280Addresses[] = {0x76, 0x77};
 
-constexpr uint32_t kSensorPeriodMs = 20;       // 50 Hz
+constexpr uint32_t kSensorPeriodMs = 20;       // BMI270 ODR: 50 Hz
 constexpr uint32_t kBarometerPeriodMs = 500;   // 2 Hz
 constexpr uint32_t kDisplayPeriodMs = 250;     // 4 Hz
 constexpr uint32_t kStatusPeriodMs = 1000;     // 1 Hz
@@ -30,6 +31,7 @@ HardwareSerial GnssSerial(2);
 BMI270::BMI270 imu;
 Adafruit_BMP280 barometer(&Wire);
 GoPlus2Driver goPlus2(Wire);
+AttitudeEkf attitudeEkf;
 
 bool goPlus2Ready = false;
 bool imuReady = false;
@@ -63,6 +65,7 @@ uint32_t lastBarometerMs = 0;
 uint32_t lastDisplayMs = 0;
 uint32_t lastStatusMs = 0;
 uint32_t lastGoPlusRetryMs = 0;
+uint32_t lastEkfGyroUs = 0;
 
 char serialLine[48];
 size_t serialLineLength = 0;
@@ -97,10 +100,13 @@ void initializeI2cDevices() {
                   imuReady ? "ready" : "not found");
     if (imuReady) {
         Serial.printf(" at 0x%02X", bmi270Address);
+        Serial.printf(" accel=%.1fHz gyro=%.1fHz",
+                      imu.accelerationSampleRate(),
+                      imu.gyroscopeSampleRate());
     }
     Serial.println();
 
-    Serial.printf("[BMM150] %s\n",
+    Serial.printf("[BMM150] %s (not used by attitude EKF)\n",
                   magnetometerReady ? "ready" : "not available");
 
     for (const uint8_t address : kBmp280Addresses) {
@@ -136,23 +142,56 @@ void pollGnssUart() {
     }
 }
 
+void updateAttitudeEkf(bool accelUpdated, bool gyroUpdated) {
+    if (!attitudeEkf.isInitialized() && accelUpdated) {
+        if (attitudeEkf.initializeFromAcceleration(accelX, accelY, accelZ)) {
+            lastEkfGyroUs = micros();
+            Serial.println("[EKF] initialized from BMI270 acceleration; yaw=0");
+        }
+    }
+
+    if (!attitudeEkf.isInitialized()) {
+        return;
+    }
+
+    if (gyroUpdated) {
+        const uint32_t nowUs = micros();
+        if (lastEkfGyroUs != 0) {
+            const float dtSeconds =
+                static_cast<uint32_t>(nowUs - lastEkfGyroUs) * 1.0e-6F;
+            attitudeEkf.predict(gyroX, gyroY, gyroZ, dtSeconds);
+        }
+        lastEkfGyroUs = nowUs;
+    }
+
+    if (accelUpdated) {
+        (void)attitudeEkf.correctFromAcceleration(accelX, accelY, accelZ);
+    }
+}
+
 void pollSensors() {
     if (!imuReady) {
         return;
     }
 
+    bool accelUpdated = false;
+    bool gyroUpdated = false;
+
     if (imu.accelerationAvailable() > 0) {
-        (void)imu.readAcceleration(accelX, accelY, accelZ);
+        accelUpdated = (imu.readAcceleration(accelX, accelY, accelZ) != 0);
     }
 
     if (imu.gyroscopeAvailable() > 0) {
-        (void)imu.readGyroscope(gyroX, gyroY, gyroZ);
+        gyroUpdated = (imu.readGyroscope(gyroX, gyroY, gyroZ) != 0);
     }
 
+    // BMM150 remains a separate hardware check; the attitude EKF does not use it.
     if (magnetometerReady && imu.magneticFieldAvailable() > 0) {
         magneticFieldValid =
             (imu.readMagneticField(magX, magY, magZ) != 0);
     }
+
+    updateAttitudeEkf(accelUpdated, gyroUpdated);
 }
 
 void pollBarometer() {
@@ -203,12 +242,29 @@ bool commandServoPulse(uint8_t channel, uint16_t pulseWidthUs) {
     return true;
 }
 
+void reportAttitude() {
+    if (!attitudeEkf.isInitialized()) {
+        Serial.println("[ATTITUDE] EKF waiting for a valid 1g accelerometer sample");
+        return;
+    }
+
+    float roll = 0.0F, pitch = 0.0F, yaw = 0.0F;
+    attitudeEkf.getEulerDegrees(roll, pitch, yaw);
+    Serial.printf("[ATTITUDE deg] roll=%.2f pitch=%.2f yaw=%.2f (relative; yaw drifts)\n",
+                  roll, pitch, yaw);
+    Serial.printf("[EKF] accel correction: %s\n",
+                  attitudeEkf.lastAccelCorrectionAccepted()
+                      ? "accepted"
+                      : "rejected");
+}
+
 void printHelp() {
     Serial.println();
     Serial.println("Commands:");
     Serial.println("  s <channel 0-3> <angle 0-180>");
     Serial.println("  p <channel 0-3> <pulse_us 500-2500>");
     Serial.println("  status");
+    Serial.println("  att");
     Serial.println("  ?");
     Serial.println();
     Serial.println("Basic buttons: A=next channel, B=angle -5, C=angle +5");
@@ -235,6 +291,8 @@ void reportStatus() {
         Serial.printf("[BARO] %.2f C  %.2f hPa\n",
                       temperatureC, pressureHpa);
     }
+
+    reportAttitude();
 }
 
 void processSerialLine(char* line) {
@@ -249,6 +307,11 @@ void processSerialLine(char* line) {
 
     if (strcmp(line, "status") == 0) {
         reportStatus();
+        return;
+    }
+
+    if (strcmp(line, "att") == 0) {
+        reportAttitude();
         return;
     }
 
@@ -363,6 +426,21 @@ void renderDisplay() {
                           temperatureC, pressureHpa);
     } else {
         M5.Display.println("BARO: not available");
+    }
+
+    if (attitudeEkf.isInitialized()) {
+        float roll = 0.0F, pitch = 0.0F, yaw = 0.0F;
+        attitudeEkf.getEulerDegrees(roll, pitch, yaw);
+        M5.Display.printf("EKF R:%6.1f P:%6.1f deg\n", roll, pitch);
+        M5.Display.printf("EKF Y:%6.1f deg (relative)\n", yaw);
+        M5.Display.printf("ACC correction: %s\n",
+                          attitudeEkf.lastAccelCorrectionAccepted()
+                              ? "accepted"
+                              : "rejected");
+    } else {
+        M5.Display.println("EKF: waiting for stable acceleration");
+        M5.Display.println("EKF: --");
+        M5.Display.println();
     }
 
     M5.Display.drawFastHLine(6, 151, 308, TFT_DARKGREY);
